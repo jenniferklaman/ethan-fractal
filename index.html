@@ -6,41 +6,30 @@
 <title>I miss you; here is a Heart Fractal</title>
 
 <style>
-html, body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background: #0b0b0f;
-}
-canvas {
-  display: block;
-  width: 100vw;
-  height: 100vh;
-}
-.date, .overlay {
-  color: rgba(255,245,250,0.9);
-  font-family: ui-serif, Georgia, serif;
-  font-size: 13px;
-  letter-spacing: 0.05em;
-  position: fixed;
-  user-select: none;
-  pointer-events: none;
-  text-shadow:
-    0 1px 2px rgba(0,0,0,0.4),
-    0 0 18px rgba(120,0,40,0.35);
-}
-.date { top:16px; left:18px; }
-.overlay { bottom:16px; right:18px; }
-.hint {
-  position: fixed;
-  bottom: 16px;
-  left: 18px;
-  color: rgba(230,230,255,0.18);
-  font-family: system-ui, sans-serif;
-  font-size: 12px;
-}
+  html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background:#0b0b0f; }
+  canvas { display:block; width:100vw; height:100vh; }
+  .date,.overlay{
+    color: rgba(255,245,250,0.92);
+    font-family: ui-serif, Georgia, serif;
+    font-size: 13px;
+    letter-spacing: 0.05em;
+    position: fixed;
+    user-select: none;
+    pointer-events: none;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.45), 0 0 18px rgba(120,0,40,0.35);
+  }
+  .date{ top:16px; left:18px; }
+  .overlay{ bottom:16px; right:18px; }
+  .hint{
+    position: fixed;
+    bottom: 16px;
+    left: 18px;
+    color: rgba(230,230,255,0.18);
+    font-family: system-ui, sans-serif;
+    font-size: 12px;
+    user-select:none;
+    pointer-events:none;
+  }
 </style>
 </head>
 
@@ -48,117 +37,269 @@ canvas {
 <canvas id="c"></canvas>
 <div class="date">Dec. 31, 2025 · 1:00 PM</div>
 <div class="overlay">still iterating · Dec. 31, 2025 · 1:00 PM</div>
-<div class="hint">drag · zoom</div>
+<div class="hint">drag · wheel · auto-zoom · calm → Dec 31</div>
 
 <script>
 (() => {
-const canvas = document.getElementById("c");
-const gl = canvas.getContext("webgl");
-if (!gl) { alert("WebGL not supported"); return; }
+  const TARGET_MS = new Date("2025-12-31T13:00:00").getTime();
 
-const vs = `
-attribute vec2 a;
-varying vec2 v;
-void main(){
-  v = a;
-  gl_Position = vec4(a,0,1);
-}`;
+  const canvas = document.getElementById("c");
+  const gl = canvas.getContext("webgl", { antialias:false, premultipliedAlpha:false });
+  if (!gl) { alert("WebGL not supported"); return; }
 
-const fs = `
-precision highp float;
-varying vec2 v;
-uniform vec2 u_res;
-uniform float u_scale;
+  const vs = `
+    attribute vec2 a;
+    varying vec2 v;
+    void main(){
+      v = (a + 1.0) * 0.5;       // 0..1
+      gl_Position = vec4(a,0.0,1.0);
+    }
+  `;
 
-float heart(vec2 p){
-  float x = p.x;
-  float y = p.y;
-  return pow(x*x + y*y - 1.0, 3.0) - x*x*y*y*y;
-}
+  // Heart Multibrot:
+  // - Use Mandelbrot-like iteration with fractional power p=2.25 (Thingiverse logic)
+  // - Convert escape-time to a "height"/density field
+  // - Multiply by an implicit-heart mask so it is ALWAYS a heart silhouette
+  // - Time-based calming: as target date approaches, smooth into a clean heart
+  const fs = `
+    precision highp float;
+    varying vec2 v;
 
-float fbm(vec2 p){
-  float v = 0.0;
-  float a = 0.5;
-  for(int i=0;i<4;i++){
-    v += a * sin(p.x*3.0) * cos(p.y*3.0);
-    p *= 2.0;
-    a *= 0.5;
+    uniform vec2  u_res;
+    uniform float u_time;
+    uniform vec2  u_center;
+    uniform float u_scale;
+    uniform float u_targetScale;
+    uniform float u_calm;   // 0..1 (0 now, 1 at date)
+    uniform float u_seed;
+
+    // Complex power: z^p via polar form (principal branch)
+    vec2 cpow(vec2 z, float p){
+      float r = length(z);
+      float a = atan(z.y, z.x);
+      // avoid NaNs at r=0
+      float rp = pow(max(r, 1e-12), p);
+      float ap = a * p;
+      return vec2(rp * cos(ap), rp * sin(ap));
+    }
+
+    // Implicit heart (0 on boundary; negative inside)
+    float heartF(vec2 p){
+      float x = p.x;
+      float y = p.y;
+      return pow(x*x + y*y - 1.0, 3.0) - x*x*y*y*y;
+    }
+
+    // Smoothstep helper
+    float sstep(float a, float b, float x){ return smoothstep(a,b,x); }
+
+    // Escape-time for fractional multibrot (Mandelbrot-style z0=0)
+    float multibrotIter(vec2 c, float p, int maxIter){
+      vec2 z = vec2(0.0);
+      float it = 0.0;
+      for (int i=0; i<220; i++){
+        if (i >= maxIter) break;
+        z = cpow(z, p) + c;
+        if (dot(z,z) > 4.0) break;
+        it += 1.0;
+      }
+      return it;
+    }
+
+    // Simple palette (romantic)
+    vec3 palette(float t){
+      vec3 a = vec3(0.05, 0.03, 0.07);
+      vec3 b = vec3(0.98, 0.60, 0.78);
+      vec3 c = vec3(0.65, 0.20, 0.35);
+      return a + b * cos(6.28318 * (c*t + vec3(0.00, 0.12, 0.22)));
+    }
+
+    void main(){
+      // Screen -> centered coords with aspect correction
+      vec2 uv = (v - 0.5) * vec2(u_res.x/u_res.y, 1.0);
+
+      // Compose camera: manual center + scale
+      vec2 p = u_center + uv * u_scale;
+
+      // Frame the heart slightly upward and scaled
+      // (this is in "fractal coordinate space", not screen space)
+      vec2 c = p;
+      c.y += 0.10;
+
+      // Heart mask in the same coordinate system (tweak factor for nice silhouette)
+      float hf = heartF(c * 1.55);
+
+      // Heart alpha: 1 inside, 0 outside, with a soft edge
+      float heartInside = sstep(0.05, -0.05, hf);
+      float heartEdge   = exp(-abs(hf) * 18.0);
+
+      // Fractional exponent p interpolates slightly toward 2 as calm increases
+      // (reduces branch-cut harshness near the end)
+      float pwr = mix(2.25, 2.0, u_calm);
+
+      // Iteration count: increase detail early, reduce a touch when calm for smoothness
+      int maxIter = int(mix(140.0, 95.0, u_calm));
+
+      float it = multibrotIter(c * 0.95, pwr, maxIter);
+      float n  = it / float(maxIter);
+
+      // Convert to "height/density": more contrast early, flatter late
+      float density = pow(n, mix(0.55, 1.3, u_calm));
+
+      // Force the global silhouette to be a heart
+      density *= heartInside;
+
+      // Add subtle ringy structure early; fade it out as calm increases
+      float rings = 0.5 + 0.5*cos(40.0*n + u_seed);
+      density = mix(density * (0.75 + 0.25*rings), density, u_calm);
+
+      // Background gradient
+      float bgv = sstep(1.3, 0.1, dot(uv,uv));
+      vec3 bg = mix(vec3(1.0,0.72,0.85), vec3(1.0,0.60,0.80), bgv);
+      bg *= 0.95;
+
+      // Heart fill color
+      vec3 base = vec3(0.10, 0.04, 0.08);
+      vec3 frac = palette(density * 0.9);
+
+      // Blend: inside heart uses fractal palette; outside stays romantic pink
+      vec3 col = mix(bg, mix(base, frac, 0.85), density);
+
+      // Edge glow (stronger early, softer late)
+      vec3 glowCol = vec3(1.0, 0.28, 0.52);
+      col += glowCol * heartEdge * mix(0.26, 0.12, u_calm);
+
+      // Very subtle vignette
+      float vign = sstep(1.1, 0.25, dot(uv,uv));
+      col *= 0.88 + 0.12*vign;
+
+      // Final "calm into normal heart": as u_calm -> 1, flatten fractal to smooth fill
+      float smoothFill = heartInside * sstep(0.10, 0.55, heartEdge);
+      col = mix(col, mix(bg, vec3(0.12,0.04,0.09), smoothFill), u_calm * 0.85);
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `;
+
+  function compile(type, src){
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      const err = gl.getShaderInfoLog(s);
+      alert("Shader compile error:\n" + err);
+      throw new Error(err);
+    }
+    return s;
   }
-  return v;
-}
 
-void main(){
-  vec2 uv = v * vec2(u_res.x/u_res.y,1.0) * u_scale;
-  uv.y += 0.15;
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    const err = gl.getProgramInfoLog(prog);
+    alert("Program link error:\n" + err);
+    throw new Error(err);
+  }
+  gl.useProgram(prog);
 
-  float d = heart(uv);
-  float edge = abs(d);
+  // Fullscreen triangle
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const aloc = gl.getAttribLocation(prog, "a");
+  gl.enableVertexAttribArray(aloc);
+  gl.vertexAttribPointer(aloc, 2, gl.FLOAT, false, 0, 0);
 
-  float noise = fbm(uv * 2.0) * 0.02;
-  float mask = smoothstep(0.02, 0.0, edge + noise);
+  const u_res        = gl.getUniformLocation(prog, "u_res");
+  const u_time       = gl.getUniformLocation(prog, "u_time");
+  const u_center     = gl.getUniformLocation(prog, "u_center");
+  const u_scale      = gl.getUniformLocation(prog, "u_scale");
+  const u_targetScale= gl.getUniformLocation(prog, "u_targetScale");
+  const u_calm       = gl.getUniformLocation(prog, "u_calm");
+  const u_seed       = gl.getUniformLocation(prog, "u_seed");
 
-  vec3 inside = vec3(0.15,0.05,0.10);
-  vec3 outside = vec3(1.0,0.65,0.80);
+  function resize(){
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    canvas.width  = innerWidth  * dpr;
+    canvas.height = innerHeight * dpr;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+  }
+  addEventListener("resize", resize, { passive:true });
+  resize();
 
-  vec3 col = mix(outside, inside, mask);
+  // Manual drag
+  let center = { x: 0.0, y: 0.0 };
+  let scale = 2.2;
+  let targetScale = scale;
 
-  float glow = exp(-edge*40.0);
-  col += vec3(1.0,0.4,0.6) * glow * 0.25;
+  let dragging = false, px = 0, py = 0;
+  canvas.onpointerdown = e => { dragging = true; px = e.clientX; py = e.clientY; };
+  canvas.onpointerup   = () => { dragging = false; };
+  canvas.onpointercancel = () => { dragging = false; };
+  canvas.onpointermove = e => {
+    if (!dragging) return;
+    center.x -= (e.clientX - px) / innerWidth  * scale * 2.0;
+    center.y += (e.clientY - py) / innerHeight * scale * 2.0;
+    px = e.clientX; py = e.clientY;
+  };
 
-  gl_FragColor = vec4(col,1.0);
-}`;
+  // Smooth inertial wheel zoom
+  canvas.onwheel = e => {
+    e.preventDefault();
+    const z = Math.exp(e.deltaY * 0.001);
+    targetScale *= z;
+    targetScale = Math.max(0.25, Math.min(targetScale, 6.0));
+  };
 
-function compile(t,s){
-  const sh = gl.createShader(t);
-  gl.shaderSource(sh,s);
-  gl.compileShader(sh);
-  if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS))
-    alert(gl.getShaderInfoLog(sh));
-  return sh;
-}
+  // Time-based calm factor: last 30 days → 0..1
+  function calmFactor(){
+    const now = Date.now();
+    const windowMs = 1000 * 60 * 60 * 24 * 30; // 30 days
+    const t = 1 - (TARGET_MS - now) / windowMs;
+    const x = Math.max(0, Math.min(1, t));
+    // smoothstep easing
+    return x*x*(3 - 2*x);
+  }
 
-const prog = gl.createProgram();
-gl.attachShader(prog,compile(gl.VERTEX_SHADER,vs));
-gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fs));
-gl.linkProgram(prog);
-gl.useProgram(prog);
+  // Auto-zoom that slowly settles into the heart, plus gentle breathing early
+  function desiredAutoScale(calm){
+    // early: wider view; late: closer, calmer
+    return 2.35 - 1.25 * calm;
+  }
 
-const buf = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER,buf);
-gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
-const loc = gl.getAttribLocation(prog,"a");
-gl.enableVertexAttribArray(loc);
-gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  // Seed: deterministic but “personal”—tie to date text if you want
+  const seed = 0.3183099; // change for different ring vibes
 
-const ur = gl.getUniformLocation(prog,"u_res");
-const us = gl.getUniformLocation(prog,"u_scale");
+  function draw(t){
+    const calm = calmFactor();
 
-let scale = 1.6;
-let targetScale = scale;
+    // Auto target scale nudges your zoom target; user wheel still works (it multiplies)
+    const auto = desiredAutoScale(calm);
+    // Blend your current target toward auto target slowly, so wheel can override
+    targetScale += (auto - targetScale) * 0.002;
 
-function resize(){
-  const dpr = Math.min(2,devicePixelRatio||1);
-  canvas.width = innerWidth*dpr;
-  canvas.height = innerHeight*dpr;
-  gl.viewport(0,0,canvas.width,canvas.height);
-}
-addEventListener("resize",resize);
-resize();
+    // Gentle breathing zoom early, fades out as calm→1
+    const breathe = (1.0 - calm) * 0.05 * Math.sin(t * 0.00035);
+    const zGoal = targetScale + breathe;
 
-canvas.onwheel = e=>{
-  e.preventDefault();
-  targetScale *= Math.exp(e.deltaY*0.001);
-  targetScale = Math.max(0.6,Math.min(targetScale,5));
-};
+    // Ease actual scale toward goal
+    scale += (zGoal - scale) * 0.10;
 
-function draw(){
-  scale += (targetScale-scale)*0.12;
-  gl.uniform2f(ur,canvas.width,canvas.height);
-  gl.uniform1f(us,scale);
-  gl.drawArrays(gl.TRIANGLES,0,3);
+    gl.uniform2f(u_res, canvas.width, canvas.height);
+    gl.uniform1f(u_time, t);
+    gl.uniform2f(u_center, center.x, center.y);
+    gl.uniform1f(u_scale, scale);
+    gl.uniform1f(u_targetScale, targetScale);
+    gl.uniform1f(u_calm, calm);
+    gl.uniform1f(u_seed, seed);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    requestAnimationFrame(draw);
+  }
+
   requestAnimationFrame(draw);
-}
-draw();
 })();
 </script>
 </body>
