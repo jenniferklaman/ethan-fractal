@@ -139,11 +139,11 @@ void main(){
   float n = float(i)/float(M);
   float glow = exp(-7.0*n);
 
-  vec3 col = mix(
-    vec3(0.05,0.03,0.06),
+    vec3 col = mix(
+    vec3(0.08,0.05,0.10),   // deeper base color heh
     vec3(0.95,0.55,0.70),
     pow(1.0-n,0.6)
-  );
+    );
 
   col += vec3(1.0,0.35,0.55) * glow * 0.25;
 
