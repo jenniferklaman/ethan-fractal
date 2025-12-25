@@ -125,10 +125,12 @@ void main(){
     i = j;
   }
 
-  if (i == M-1) {
-    gl_FragColor = vec4(0.03,0.03,0.05,1.0);
+    if (i == M-1) {
+    float d = length(z);
+    vec3 inner = vec3(0.06, 0.04, 0.08) + 0.03 * cos(d * 8.0);
+    gl_FragColor = vec4(inner, 1.0);
     return;
-  }
+    }
 
   float n = float(i)/float(M);
   float glow = exp(-7.0*n);
