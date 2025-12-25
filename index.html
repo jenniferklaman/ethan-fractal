@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <title>I miss you.</title>
 
+<link rel="icon" href="data:image/svg+xml,
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>
+  <text y='24' font-size='24'>❤️‍🔥</text>
+</svg>">
+
+
 <style>
   html, body {
     margin:0;
@@ -44,7 +50,7 @@
 <body>
 <canvas id="c"></canvas>
 <div class="overlay">still iterating</div>
-<div class="hint">drag · wheel · breathe</div>
+<div class="hint">drag · wheel · drift</div>
 
 <script>
 (() => {
@@ -79,35 +85,36 @@
     }
 
     void main(){
-      // screen -> complex plane
       vec2 uv = (v - 0.5) * vec2(u_res.x / u_res.y, 1.0);
-      vec2 c = u_center + uv * u_scale;
 
-      // TRUE Mandelbrot iteration: z0 = 0
+      // subtle drifting of parameter space (edge motion only)
+      vec2 drift = 0.002 * vec2(
+        sin(u_time * 0.00015),
+        cos(u_time * 0.00011)
+      );
+
+      vec2 c = u_center + uv * u_scale + drift;
+
       vec2 z = vec2(0.0);
       float iter = 0.0;
-      const float MAX_ITER = 200.0;
+      const float MAX_ITER = 220.0;
 
-      for (int i = 0; i < 200; i++) {
+      for (int i = 0; i < 220; i++) {
         z = cpow(z, 2.25) + c * 0.85;
         if (dot(z, z) > 4.0) break;
         iter += 1.0;
       }
 
-      // Log-scaled height
       float h = log(iter + 1.0) / log(MAX_ITER);
+      h = pow(h, 1.8);
 
-      // Sharpen rim, flatten interior
-      h = pow(h, 1.7);
+      // soft pink palette
+      vec3 deep = vec3(0.12, 0.02, 0.08);
+      vec3 mid  = vec3(0.85, 0.35, 0.55);
+      vec3 edge = vec3(1.0, 0.65, 0.80);
 
-      // heart colors mmmm
-      vec3 inside = vec3(0.10, 0.02, 0.06);
-      vec3 rim    = vec3(1.0, 0.55, 0.78);
-      vec3 col = mix(inside, rim, h);
-
-      // adding vignette yaya
-      float vign = smoothstep(1.1, 0.25, dot(uv, uv));
-      col *= 0.85 + 0.15 * vign;
+      vec3 col = mix(deep, mid, h);
+      col = mix(col, edge, smoothstep(0.75, 1.0, h));
 
       gl_FragColor = vec4(col, 1.0);
     }
@@ -154,7 +161,6 @@
 
   let center = { x: 0.0, y: 0.0 };
   let scale = 2.4;
-  let targetScale = scale;
 
   let dragging=false, px=0, py=0;
   canvas.onpointerdown = e => { dragging=true; px=e.clientX; py=e.clientY; };
@@ -162,20 +168,19 @@
   canvas.onpointermove = e => {
     if (!dragging) return;
     center.x -= (e.clientX-px)/innerWidth * scale * 2.0;
-    center.y += (e.clientY-py)/innerHeight * scale * 2.0;
+    center.y += (e.clientY-py)/innerHeight* scale * 2.0;
     px=e.clientX; py=e.clientY;
   };
 
   canvas.onwheel = e => {
     e.preventDefault();
-    targetScale *= Math.exp(e.deltaY * 0.001);
-    targetScale = Math.max(0.2, Math.min(targetScale, 6.0));
+    scale *= Math.exp(e.deltaY * 0.001);
+    scale = Math.max(0.15, Math.min(scale, 6.0));
   };
 
   function draw(t){
-    const breathe = 0.06 * Math.sin(t * 0.00035);
-    targetScale += (2.4 - targetScale) * 0.002;
-    scale += (targetScale + breathe - scale) * 0.1;
+    // slow inward auto-zoom
+    scale *= 0.9996;
 
     gl.uniform2f(u_res, canvas.width, canvas.height);
     gl.uniform2f(u_center, center.x, center.y);
