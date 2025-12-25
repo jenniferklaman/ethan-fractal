@@ -10,7 +10,6 @@
   <text y='24' font-size='24'>❤️‍🔥</text>
 </svg>">
 
-
 <style>
   html, body {
     margin:0;
@@ -41,8 +40,15 @@
     left: 18px;
     font-family: system-ui, sans-serif;
     font-size: 12px;
-    color: rgba(230,230,255,0.18);
-    pointer-events: none;
+    color: rgba(230,230,255,0.35);
+  }
+  .hint a {
+    color: rgba(230,230,255,0.45);
+    text-decoration: none;
+    pointer-events: auto;
+  }
+  .hint a:hover {
+    color: rgba(255,180,210,0.85);
   }
 </style>
 </head>
@@ -50,7 +56,11 @@
 <body>
 <canvas id="c"></canvas>
 <div class="overlay">You have my heart fractal</div>
-<div class="hint"><drag & zoom></div>
+<div class="hint">
+  <a href="https://github.com/jenniferklaman/ethan-fractal" target="_blank" rel="noopener">
+    repo ↑
+  </a>
+</div>
 
 <script>
 (() => {
@@ -87,7 +97,6 @@
     void main(){
       vec2 uv = (v - 0.5) * vec2(u_res.x / u_res.y, 1.0);
 
-      // subtle drifting of parameter space (edge motion only)
       vec2 drift = 0.002 * vec2(
         sin(u_time * 0.00015),
         cos(u_time * 0.00011)
@@ -105,16 +114,20 @@
         iter += 1.0;
       }
 
+      float inside = step(MAX_ITER - 1.0, iter);
+
       float h = log(iter + 1.0) / log(MAX_ITER);
       h = pow(h, 1.8);
 
-      // soft pink palette
       vec3 deep = vec3(0.12, 0.02, 0.08);
       vec3 mid  = vec3(0.85, 0.35, 0.55);
       vec3 edge = vec3(1.0, 0.65, 0.80);
 
-      vec3 col = mix(deep, mid, h);
-      col = mix(col, edge, smoothstep(0.75, 1.0, h));
+      vec3 heart = mix(deep, mid, h);
+      heart = mix(heart, edge, smoothstep(0.75, 1.0, h));
+
+      vec3 bg = vec3(0.05, 0.02, 0.04);
+      vec3 col = mix(bg, heart, inside);
 
       gl_FragColor = vec4(col, 1.0);
     }
@@ -179,7 +192,6 @@
   };
 
   function draw(t){
-    // slow inward auto-zoom
     scale *= 0.9996;
 
     gl.uniform2f(u_res, canvas.width, canvas.height);
