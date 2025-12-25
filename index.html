@@ -95,9 +95,17 @@ float dateBias(){
 }
 
 vec2 heartC(float t, float k){
-  float a = -0.80 + dateBias();
-  float b = 0.156 + 0.006*sin(t*0.00025) + 0.010*k;
-  return vec2(a,b);
+  // Locked heart parameter
+  float a = -0.745;
+  float b =  0.186;
+
+  // subtle breathing (does not destroy heart)
+  b += 0.003 * sin(t * 0.00025);
+
+  // Date of when I can see you next 
+  b += 0.002 * k;
+
+  return vec2(a, b);
 }
 
 void main(){
