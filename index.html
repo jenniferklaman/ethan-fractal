@@ -19,11 +19,7 @@
       display: block;
       width: 100vw;
       height: 100vh;
-      opacity: 0;
-      transition: opacity 1.6s ease;
-    }
-    canvas.visible {
-      opacity: 1;
+      opacity: 1; /* force visible for debugging */
     }
 
     .date {
@@ -110,7 +106,6 @@
     }
 
     float dateBias(){
-      // Encodes: 12 / 31 / 25 / 13
       return (12.0 + 31.0 + 25.0 + 13.0) / 1000.0;
     }
 
@@ -125,10 +120,9 @@
     void main(){
       vec2 uv = (v - 0.5) * vec2(u_res.x/u_res.y, 1.0);
       vec2 z = u_center + uv * u_scale;
-
       vec2 c = heartC(u_time, u_closeness);
 
-      const int M = 320;
+      const int M = 220;   // SAFER for WebGL1
       int i;
       for(i = 0; i < M; i++){
         z = csq(z) + c;
@@ -158,10 +152,18 @@
     }
   `;
 
+  /* ---------- SHADER UTILS ---------- */
+
   function compile(type, src){
     const s = gl.createShader(type);
     gl.shaderSource(s, src);
     gl.compileShader(s);
+
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      const err = gl.getShaderInfoLog(s);
+      alert("Shader compile error:\n" + err);
+      throw new Error(err);
+    }
     return s;
   }
 
@@ -169,15 +171,30 @@
   gl.attachShader(prog, compile(gl.VERTEX_SHADER, vs));
   gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fs));
   gl.linkProgram(prog);
+
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    const err = gl.getProgramInfoLog(prog);
+    alert("Program link error:\n" + err);
+    throw new Error(err);
+  }
+
   gl.useProgram(prog);
+
+  /* ---------- GEOMETRY ---------- */
 
   const buf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buf);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,3,-1,-1,3]), gl.STATIC_DRAW);
+  gl.bufferData(
+    gl.ARRAY_BUFFER,
+    new Float32Array([-1,-1, 3,-1, -1,3]),
+    gl.STATIC_DRAW
+  );
 
   const loc = gl.getAttribLocation(prog, "a");
   gl.enableVertexAttribArray(loc);
   gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+  /* ---------- UNIFORMS ---------- */
 
   const u_res = gl.getUniformLocation(prog, "u_res");
   const u_center = gl.getUniformLocation(prog, "u_center");
@@ -202,6 +219,8 @@
     const year = 1000 * 60 * 60 * 24 * 365;
     return Math.max(0, Math.min(1, 1 - (TARGET_DATE - now) / year));
   }
+
+  /* ---------- INTERACTION ---------- */
 
   let drag = false, px = 0, py = 0;
 
@@ -229,6 +248,8 @@
     scale = Math.max(0.00001, Math.min(scale, 6));
   };
 
+  /* ---------- RENDER LOOP ---------- */
+
   function draw(t){
     gl.uniform2f(u_res, canvas.width, canvas.height);
     gl.uniform2f(u_center, center.x, center.y);
@@ -240,7 +261,6 @@
   }
 
   requestAnimationFrame(draw);
-  setTimeout(() => canvas.classList.add("visible"), 120);
 })();
 </script>
 </body>
