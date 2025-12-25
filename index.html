@@ -30,8 +30,8 @@ canvas {
   user-select: none;
   pointer-events: none;
   text-shadow:
-  0 1px 2px rgba(0,0,0,0.35),
-  0 0 18px rgba(120,0,40,0.25);
+    0 1px 2px rgba(0,0,0,0.35),
+    0 0 18px rgba(120,0,40,0.25);
 }
 .overlay {
   position: fixed;
@@ -44,8 +44,8 @@ canvas {
   user-select: none;
   pointer-events: none;
   text-shadow:
-  0 1px 2px rgba(0,0,0,0.35),
-  0 0 18px rgba(120,0,40,0.25);
+    0 1px 2px rgba(0,0,0,0.35),
+    0 0 18px rgba(120,0,40,0.25);
 }
 .hint {
   position: fixed;
@@ -94,21 +94,11 @@ vec2 csq(vec2 z){
   return vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y);
 }
 
-float dateBias(){
-  return (12.0 + 31.0 + 25.0 + 13.0) / 1000.0;
-}
-
 vec2 heartC(float t, float k){
-  // Locked heart parameter
   float a = -0.72;
   float b =  0.19;
-
-  // subtle breathing (does not destroy heart)
   b += 0.003 * sin(t * 0.00025);
-
-  // Date of when I can see you next 
   b += 0.002 * k;
-
   return vec2(a, b);
 }
 
@@ -129,21 +119,21 @@ void main(){
     i = j;
   }
 
-    if (i == M-1) {
+  if (i == M-1) {
     float d = length(z);
     vec3 inner = vec3(0.06, 0.04, 0.08) + 0.03 * cos(d * 8.0);
     gl_FragColor = vec4(inner, 1.0);
     return;
-    }
+  }
 
   float n = float(i)/float(M);
   float glow = exp(-7.0*n);
 
-    vec3 col = mix(
-    vec3(0.08,0.05,0.10),   // deeper base color heh
+  vec3 col = mix(
+    vec3(0.08,0.05,0.10),
     vec3(0.95,0.55,0.70),
     pow(1.0-n,0.6)
-    );
+  );
 
   col += vec3(1.0,0.35,0.55) * glow * 0.25;
 
@@ -185,6 +175,7 @@ const uk = gl.getUniformLocation(prog,"u_closeness");
 
 let center = { x: 0.0, y: 0.0 };
 let scale  = 2.6;
+let targetScale = scale;   // ⭐ NEW: zoom target
 
 function resize(){
   const dpr = Math.min(2,devicePixelRatio||1);
@@ -209,12 +200,19 @@ canvas.onpointermove=e=>{
   center.y += (e.clientY-py)/innerHeight*scale*2;
   px=e.clientX;py=e.clientY;
 };
-canvas.onwheel=e=>{
+
+// ⭐ NEW: smooth inertial zoom
+canvas.onwheel = e => {
   e.preventDefault();
-  scale *= Math.exp(e.deltaY*0.001);
+  const zoom = Math.exp(e.deltaY * 0.001);
+  targetScale *= zoom;
+  targetScale = Math.max(0.00001, Math.min(targetScale, 6));
 };
 
 function draw(t){
+  // need to ease scale toward target
+  scale += (targetScale - scale) * 0.12;
+
   gl.uniform2f(ur,canvas.width,canvas.height);
   gl.uniform2f(uc,center.x,center.y);
   gl.uniform1f(us,scale);
